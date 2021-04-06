@@ -1,0 +1,327 @@
+---
+title: "Final_BUSAN514"
+author: "Wil Engstrom"
+date: "2/19/2021"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Question 1a
+
+```{r}
+load("variety_train.rdata")
+load("variety_test.rdata")
+
+mean(variety_train$click)
+mean(variety_train$ctruser)
+```
+
+Both of these CTRs are around 0.11 or 11%. This seems a little higher than I would expected, as I thought mobile ad CTRs would be on a lower scale closer to 1%.
+
+## Question 1b
+
+
+```{r}
+hist(variety_train$variety)
+hist(variety_train$varietytotal)
+```
+
+The total amount of distinct ads seen in the session is obviously between 1-7, but is mostly around 3 or 4 per session. While there is more variability in the number of ads the user has seen prior, which is to be expected, the majority fall around 15-35.
+
+## Question 1c
+
+```{r}
+cor(variety_train$variety,variety_train$rep)
+```
+
+These two variables are negatively correlated which makes sense. The higher that the "rep" number is then the less "variety" occurs and vice versa.
+
+## Question 1d
+
+```{r}
+library(gplots)
+plotmeans(click ~ variety, data = variety_train, frame = FALSE)
+```
+
+Based on this graph it's pretty easy to tell that the more variety in the apps then the higher the CTR is. It goes slightly lower from 6 to 7, but it's a pretty big difference from below 0.05 for 1, to above 0.15 for 6 and 7.
+
+## Question 1e
+
+The way the experiment is run changing the variety of ads wouldn't have a causal impact on the CTR. Since the experiment isn't focused on clicking on the first 7 ads it just depends on the outcome of showing their ad in the 8th spot. The ads shown before can't be clicked so it depends on how they impact the final ad shown. This means that variety is causing the change in CTR and not just a correlation.
+
+
+## Question 2a
+
+```{r}
+library(rpart)
+withinsession.model <- click ~ variety + rep + adimpsession
+withinsession.tree <- rpart(formula = withinsession.model, 
+                         data = variety_train, control = rpart.control(cp = 0.00032))
+```
+
+## Question 2b
+
+```{r}
+library(rpart.plot)
+rpart.plot(withinsession.tree)
+```
+This model made 4 splits and ended up with 5 leafs. It's interesting that the only variable it used was variety while omitting rep and adimpsession. This shows that this model finds the variety variable to be the most important.
+
+## Question 2c
+
+```{r}
+withinsession.CART.pred <- predict(withinsession.tree, variety_test)
+variety_test$withinsession.CART.pred <- withinsession.CART.pred
+```
+
+## Question 2d
+
+```{r}
+library(xgboost)
+col.withinsession = c(7,8,9)
+xgb.withinsession <- xgboost(data = data.matrix(variety_train[,col.withinsession]), 
+                  label = variety_train[,1], 
+                  eta = 0.1,
+                  max_depth = 6, 
+                  nround=100, 
+                  subsample = 1,
+                  colsample_bytree = 1,
+                  num_class = 1,
+                  min_child_weight = 5,
+                  gamma = 5,
+                  nthread = 30,
+                  eval_metric = "logloss",
+                  objective = "binary:logistic",
+                  verbose = 0
+                  )
+
+```
+
+## Question 2e
+
+```{r}
+variety_test$withinsession.xgb.pred <- predict(xgb.withinsession, data.matrix(variety_test[,col.withinsession]))
+```
+
+## Question 3a
+
+```{r}
+presession.model <- click ~ imptotal + ctruser + varietytotal + adimptotal
+presession.tree <- rpart(formula = presession.model, 
+                         data = variety_train, control = rpart.control(cp = 0.00032))
+```
+
+## Question 3b
+
+```{r}
+rpart.plot(presession.tree)
+```
+This model makes 6 splits and ends up with 7 leafs. Similar to the first CART model, this one only uses one variable which in this case is ctruser. This means that the other three variables are omitted. The model clearly thinks that ctruser is the most important and useful variable in predicting clicks.
+
+
+## Question 3c
+
+```{r}
+presession.CART.pred <- predict(presession.tree, variety_test)
+variety_test$presession.CART.pred <- presession.CART.pred
+```
+
+## Question 3d
+
+```{r}
+col.presession = c(3,4,5,6)
+xgb.presession <- xgboost(data = data.matrix(variety_train[,col.presession]), 
+                  label = variety_train[,1], 
+                  eta = 0.1,
+                  max_depth = 6, 
+                  nround=100, 
+                  subsample = 1,
+                  colsample_bytree = 1,
+                  num_class = 1,
+                  min_child_weight = 5,
+                  gamma = 5,
+                  nthread = 30,
+                  eval_metric = "logloss",
+                  objective = "binary:logistic",
+                  verbose = 0
+                  )
+```
+
+## Question 3e
+
+```{r}
+variety_test$presession.xgb.pred <- predict(xgb.presession, data.matrix(variety_test[,col.presession]))
+```
+
+## Question 4a
+
+```{r}
+full.model <- click ~ timeofday + imptotal + ctruser + varietytotal + adimptotal + variety + rep + adimpsession
+fullmodel.tree <- rpart(formula = full.model, 
+                         data = variety_train, control = rpart.control(cp = 0.00032))
+```
+
+## Question 4b
+
+```{r}
+rpart.plot(fullmodel.tree)
+```
+This model makes 16 splits and ends up with 17 leafs. Now that all variables are being used the model uses the two main variables from the previous models: variety and ctruser. This time it also brings the variable adimpsession in at the end of the tree. The rest of the variables were omitted. This shows that the two main variables that the model thinks are the most useful in predicting clicks is variety and ctruser.
+
+## Question 4c
+
+```{r}
+full.CART.pred <- predict(fullmodel.tree, variety_test)
+variety_test$full.CART.pred <- full.CART.pred
+```
+
+## Question 4d
+
+```{r}
+col.full = c(2:9)
+xgb.full <- xgboost(data = data.matrix(variety_train[,col.full]), 
+                  label = variety_train[,1], 
+                  eta = 0.1,
+                  max_depth = 4, 
+                  nround=100, 
+                  subsample = 1,
+                  colsample_bytree = 1,
+                  num_class = 1,
+                  min_child_weight = 5,
+                  gamma = 5,
+                  nthread = 30,
+                  eval_metric = "logloss",
+                  objective = "binary:logistic",
+                  verbose = 0
+                  )
+```
+
+## Question 4e
+
+```{r}
+variety_test$full.xgb.pred <- predict(xgb.full, data.matrix(variety_test[,col.full]))
+```
+
+## Question 5a
+
+```{r}
+library(pROC)
+auc.cart.withinsession = roc(variety_test$click, variety_test$withinsession.CART.pred)
+auc(auc.cart.withinsession)
+auc.cart.presession = roc(variety_test$click, variety_test$presession.CART.pred)
+auc(auc.cart.presession)
+auc.cart.full = roc(variety_test$click, variety_test$full.CART.pred)
+auc(auc.cart.full)
+```
+
+
+```{r}
+auc.xgb.withinsession = roc(variety_test$click, variety_test$withinsession.xgb.pred)
+auc(auc.xgb.withinsession)
+auc.xgb.presession = roc(variety_test$click, variety_test$presession.xgb.pred)
+auc(auc.xgb.presession)
+auc.xgb.full = roc(variety_test$click, variety_test$full.xgb.pred)
+auc(auc.xgb.full)
+```
+
+Here is a summary of the Area Under the Curve for each model:
+
++---------------+---------------+-------------+--------------+
+|               | WithinSession | PreSession  |     Full     |          
++===============+===============+=============+==============+
+| CART          |   0.5763      |    0.6385   |    0.6569    |           
++---------------+---------------+-------------+--------------+
+| XGBoost       |   0.5834      |    0.6425   |    0.6647    |           
++---------------+---------------+-------------+--------------+
+
+## Question 5b
+
+```{r}
+RIG <- function(pred,actual){
+  mean.outcome = mean(actual)
+  pred = pmin(pmax(pred, 0.0000001), 1-0.0000001)
+  llpred = mean(-log(pred)*actual-log(1-pred)*(1-actual))
+  llbase = mean(-log(mean.outcome)*actual-log(1-mean.outcome)*(1-actual))
+  rig = (1- llpred/llbase)*100
+  return(rig)
+}
+RIG(variety_test$withinsession.CART.pred, variety_test$click)
+RIG(variety_test$presession.CART.pred, variety_test$click)
+RIG(variety_test$full.CART.pred, variety_test$click)
+```
+
+```{r}
+RIG(variety_test$withinsession.xgb.pred, variety_test$click)
+RIG(variety_test$presession.xgb.pred, variety_test$click)
+RIG(variety_test$full.xgb.pred, variety_test$click)
+```
+
+Here is a summary of the Relative Information Gain for each model:
+
++---------------+---------------+-------------+--------------+
+|               | WithinSession | PreSession  |     Full     |          
++===============+===============+=============+==============+
+| CART          |   1.21679     |   3.47516   |    4.452958  |           
++---------------+---------------+-------------+--------------+
+| XGBoost       |    1.3396     |  3.535669   |    5.03055   |           
++---------------+---------------+-------------+--------------+
+
+## Question 5c
+
+For both AUC and RIG the XGBoost outperforms the regular CART model, although not by much. Both the CART and XGBoost models did better using all the variables, with the PreSession being slightly better than the WithinSession. Overall, the best model is the XGBoost that uses all the variables in the model, as it has the highest AUC and RIG. 
+
+## Question 6a
+
+Using both the CART and XGBoost models, the ones using PreSession data performed better than the WithinSession models. This shows that customer data from before the session is more valuable in predicting clicks than the data from within the same session. Using this logic, EA should be more willing to get pre-session user history rather than within-session user history.
+
+## Question 6b
+
+Overall, there is a relatively large effect in the amount of variety that a session has on the CTR. This was first shown when looking at the average CTR by variety, which showed a pretty dramatic increase in CTR from 1 to 7. When you look at all the models that were developed, variety was heavily used when predicting clicks. This shows that variety has a big impact in the CTR, and the more variety that EA is able to put in each session the bigger impact they can have on the CTR.
+
+## Question 7a
+
+```{r}
+best.impressions <- variety_test[order(-variety_test$full.xgb.pred),] 
+top5000.impressions <- best.impressions[1:5000,]
+```
+
+## Question 7b
+
+```{r}
+mean(top5000.impressions$click)
+mean(top5000.impressions$full.xgb.pred)
+```
+
+## Question 7c
+
+```{r}
+BaselineROI <- (2*sum(variety_test$click)-0.05*nrow(variety_test))/(0.05*nrow(variety_test))
+BaselineROI
+NewROI <- (2*sum(top5000.impressions$click)-0.05*nrow(top5000.impressions))/(0.05*nrow(top5000.impressions))
+NewROI
+```
+The Baseline ROI is 3.505 if they purchased every impression in the test set. However, if they only purchased the top 5000 impressions then the ROI jumps to 6.688. 
+
+## Question 7d
+
+```{r}
+for(i in seq(0,100000,500)) { 
+  lowbound <- i
+  highbound <- i + 500
+  data <- top5000.impressions[lowbound:highbound,]
+  ROI <- (2*sum(data$click)-0.05*nrow(data))/(0.05*nrow(data))
+  if (ROI < 5) {
+    break
+  }
+}
+lowbound
+highbound
+ROI
+```
+
+By running this loop I was able to look at the ROI by each segment of 500 impressions starting with the top 500 and going down from there (500-1000, 1000-1500, etc.). The impressions that were from 4000-4500 in the data had an ROI of 4.75 which is lower than the ROI EA could get by doing price promotions. Therefore, EA should buy the first 4000 of the top impressions since the ROI is higher than 5 for that group. That would cost them $0.05*4000 = 200$, which leaves them with $800 left to spend on the pricing promotion. 
